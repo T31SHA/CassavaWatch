@@ -4,3 +4,4 @@ __pycache__/
 data/
 models/saved_model/
 .pytest_cache/
+models/cassava.keras

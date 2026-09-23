@@ -31,7 +31,7 @@ TFDS_DIR = DATA_DIR / "tfds"
 MODEL_DIR = ROOT / "models"
 MAX_TRAIN = int(os.environ.get("MAX_TRAIN", 3000))
 MAX_EVAL = int(os.environ.get("MAX_EVAL", 1000))
-EPOCHS_HEAD = int(os.environ.get("EPOCHS_HEAD", 2))
+EPOCHS_HEAD = int(os.environ.get("EPOCHS_HEAD", 3))
 EPOCHS_FT = int(os.environ.get("EPOCHS_FT", 2))
 DOWNLOAD_TIMEOUT_S = int(os.environ.get("DOWNLOAD_TIMEOUT_S", 12 * 60))
 BATCH = 32
@@ -47,9 +47,8 @@ def _tfds_prepare():
 def load_tfds(tf):
     import tensorflow_datasets as tfds
     try:
-        tfds.builder("cassava", data_dir=str(TFDS_DIR)).info  # noqa: B018
-        ready = tfds.builder("cassava", data_dir=str(TFDS_DIR)).is_prepared() if hasattr(
-            tfds.core.DatasetBuilder, "is_prepared") else False
+        b = tfds.builder("cassava", data_dir=str(TFDS_DIR))
+        ready = os.path.exists(os.path.join(b.data_dir, "dataset_info.json"))
     except Exception:
         ready = False
     if not ready:
@@ -198,21 +197,21 @@ def main():
     per_class = {c: (float(cm[i, i] / cm[i].sum()) if cm[i].sum() else None) for i, c in enumerate(CLASSES)}
     acc = float(np.trace(cm) / cm.sum())
 
-    # export
+    # export (.keras here; .tflite in a subprocess — the converter can hard-abort)
     keras_path, tfl_path = MODEL_DIR / "cassava.keras", MODEL_DIR / "cassava.tflite"
     model.save(keras_path)
-    try:
-        conv = tf.lite.TFLiteConverter.from_keras_model(model)
-        conv.optimizations = [tf.lite.Optimize.DEFAULT]
-        tfl = conv.convert()
-    except Exception as e:
-        print(f"[export] from_keras_model failed ({e}); trying SavedModel path", flush=True)
-        sm = MODEL_DIR / "saved_model"
-        model.export(str(sm))
-        conv = tf.lite.TFLiteConverter.from_saved_model(str(sm))
-        conv.optimizations = [tf.lite.Optimize.DEFAULT]
-        tfl = conv.convert()
-    tfl_path.write_bytes(tfl)
+    ev = {
+        "data_source": src, "placeholder": src.startswith("PLACEHOLDER"),
+        "n_train": int(len(y_tr)), "n_eval": int(cm.sum()), "classes": CLASSES,
+        "accuracy": acc, "per_class_accuracy": per_class, "confusion_matrix": cm.tolist(),
+        "confusion_matrix_note": "rows=true, cols=predicted",
+        "epochs": {"head": EPOCHS_HEAD, "finetune": EPOCHS_FT},
+        "keras_size_mb": round(keras_path.stat().st_size / 1e6, 2),
+    }
+    (MODEL_DIR / "eval.json").write_text(json.dumps(ev, indent=2))
+    import subprocess
+    subprocess.run([sys.executable, str(ROOT / "ml" / "export_tflite.py")], check=True)
+    tfl = tfl_path.read_bytes()
 
     # tflite vs keras agreement on eval set
     interp = tf.lite.Interpreter(model_content=tfl)
@@ -225,16 +224,11 @@ def main():
         agree += int(interp.get_tensor(oo["index"]).argmax() == model(x, training=False).numpy().argmax())
         n += 1
 
-    ev = {
-        "data_source": src, "placeholder": src.startswith("PLACEHOLDER"),
-        "n_train": int(len(y_tr)), "n_eval": int(cm.sum()), "classes": CLASSES,
-        "accuracy": acc, "per_class_accuracy": per_class, "confusion_matrix": cm.tolist(),
-        "confusion_matrix_note": "rows=true, cols=predicted",
-        "keras_size_mb": round(keras_path.stat().st_size / 1e6, 2),
+    ev.update({
         "tflite_size_mb": round(tfl_path.stat().st_size / 1e6, 2),
         "tflite_keras_top1_agreement": agree / max(n, 1),
         "train_seconds": round(time.time() - t0),
-    }
+    })
     (MODEL_DIR / "eval.json").write_text(json.dumps(ev, indent=2))
     print(json.dumps(ev, indent=2))
     print(f"[export] keras={ev['keras_size_mb']} MB  tflite={ev['tflite_size_mb']} MB")

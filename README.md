@@ -14,12 +14,13 @@ Mobile-first web app for cassava disease diagnosis and denominator-aware disease
 ```bash
 make setup      # uv venv (Python 3.11) + pip install -r requirements.txt
 make test       # pytest
-make train      # data fetch + train + export .keras/.tflite + models/eval.json
+make fetch      # balanced iCassava subsample via HTTP range requests (~240 MB)
+make train      # train + export .keras/.tflite + models/eval.json
 make seed       # ~400 synthetic reports around Busia (KE) and Mwanza (TZ) + one injected CBSD spike
 make run        # http://localhost:8000/  (farmer)   http://localhost:8000/dashboard  (officer)
 ```
 
-On a slow link, fetch the training subsample first with `python ml/fetch_icassava.py 300 100`
+`make train` uses the `make fetch` subsample if present, otherwise it tries TFDS
 (see "Data" below). Geolocation in mobile browsers needs HTTPS or `localhost`. When neither is
 available, the app falls back to a manual district picker.
 
