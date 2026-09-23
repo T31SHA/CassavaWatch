@@ -9,20 +9,54 @@ Mobile-first web app for cassava disease diagnosis and denominator-aware disease
 - **Extension officers** (`/dashboard`) see a Leaflet map of reports coloured by disease, red rectangles
   for **anomaly alerts** on a 0.1° grid, and a table of active alerts with a *Mark reviewed* button.
 
+![Capture](docs/screenshots/capture.png) ![Result](docs/screenshots/result.png)
+
+![Officer dashboard](docs/screenshots/dashboard.png)
+
 ## Quick start
+
+Prerequisites: Linux/macOS with `make`, [`uv`](https://docs.astral.sh/uv/) (it fetches Python 3.11
+itself) and internet access for the first install. That install includes `tensorflow-cpu`, about 214 MB.
 
 ```bash
 make setup      # uv venv (Python 3.11) + pip install -r requirements.txt
-make test       # pytest
-make fetch      # balanced iCassava subsample via HTTP range requests (~240 MB)
-make train      # train + export .keras/.tflite + models/eval.json
+make test       # pytest (15 tests)
 make seed       # ~400 synthetic reports around Busia (KE) and Mwanza (TZ) + one injected CBSD spike
 make run        # http://localhost:8000/  (farmer)   http://localhost:8000/dashboard  (officer)
 ```
 
-`make train` uses the `make fetch` subsample if present, otherwise it tries TFDS
-(see "Data" below). Geolocation in mobile browsers needs HTTPS or `localhost`. When neither is
-available, the app falls back to a manual district picker.
+The trained model (`models/cassava.tflite`) is committed, so you only need to retrain to change it:
+
+```bash
+make fetch      # balanced iCassava subsample via HTTP range requests (~240 MB) -> data/icassava/
+make train      # train + export .keras/.tflite + models/eval.json (about 3 min on CPU)
+```
+
+The SQLite database is `./cassavawatch.db` (override with `CASSAVAWATCH_DB`). It is created on first
+start and wiped and refilled by `make seed`. Mobile browsers only allow geolocation over HTTPS or on
+`localhost`. When it is unavailable, the app shows a manual district picker.
+
+**End-to-end check** (headless Chrome, with the server running and the database seeded):
+`uv pip install playwright && python scripts/e2e_playwright.py`. This runs 19 checks and rewrites
+`docs/screenshots/`. Note that it marks the seeded alert as reviewed, so run `make seed` afterwards.
+
+## 60-second demo script
+
+1. `make seed && make run`, then open **http://localhost:8000/** in a phone-sized window (360×740).
+2. Tap **EN/SW** to show that the whole page switches language. Leave it on **EN**.
+3. Tap **📷 Take photo** and pick 3 leaf photos, for example from `data/icassava/test/healthy/`. The
+   counter reads "3 / 6 leaves — good".
+4. If location is blocked, choose **Busia (KE)** in the district picker. Tap **Diagnose this plant**.
+5. The progress bar moves to **2 Diagnosing**, then **3 Result**. The card shows a green/red/amber
+   header, the name in English and Swahili, a one-line explanation and 3–4 action bullets.
+   Tap **SW** to show the card in Swahili.
+6. Tap **Extension officer dashboard →**. The strip reads "1 active alert" and "CBSD".
+7. Click the **CBSD** row ("4 km from Busia"). The map zooms to the red cell and the popup shows
+   observed 24 against expected 0.9.
+8. Open **ⓘ How alerts work** and explain baseline against observed. Point at the Mwanza "field day"
+   village: many reports, but no alert.
+9. Click **Run surveillance** (still 1 alert), then **Review**. The alert leaves the active list and
+   the "No active alerts" empty state appears.
 
 ## Surveillance: why not hotspot clustering
 
@@ -46,7 +80,7 @@ every new report and on `POST /api/surveillance/run`.
 
 | method | path | |
 |---|---|---|
-| POST | `/api/diagnose` | multipart: `images` (1–8), `lat`, `lon`, `lang` (en/sw), `device_id` |
+| POST | `/api/diagnose` | multipart: `images` (1–8), `lat`, `lon`, `lang` (en/sw), `device_id`. Returns plant diagnosis, `advice` + `advice_all` (en/sw), `single_leaf_unreliable`. 400 for non-images, 503 if no model |
 | GET | `/api/reports?days=60` | reports |
 | GET | `/api/alerts?status=active` | alerts (`active`/`reviewed`/`resolved`/`all`) with Leaflet bounds |
 | POST | `/api/alerts/{id}/review` | mark reviewed |
@@ -71,8 +105,10 @@ from the **same archive TFDS builds from**. `train.py` tries these sources in or
 → TFDS (12-minute download timeout) → Kaggle 2020 set in `./data/` → synthetic data, which is logged
 loudly as `PLACEHOLDER DATA`.
 
-The app loads `cassava.tflite` if it exists, otherwise `cassava.keras`, otherwise a clearly labelled
-colour-heuristic **stub** (`backend: "stub"` in responses) so that the UI still works before training.
+The app loads `cassava.tflite` if it exists, otherwise `cassava.keras`. If neither exists, the app
+still starts, `/health` reports `model_backend: "none"` and `/api/diagnose` returns **503** with a
+clear message. For UI work without a model, `CASSAVAWATCH_STUB=1` enables a colour-heuristic stub,
+which is labelled `backend: "stub"` in responses.
 
 ### Metrics
 
@@ -100,18 +136,29 @@ Confusion matrix (rows = true, columns = predicted):
 
 CBSD is the weakest class, which fits its cryptic leaf symptoms. This is single-leaf accuracy; the app averages 3–6 leaves per plant.
 
-## Known limits
+## Known limitations
 
-- **Single-leaf diagnosis is unreliable.** Published field accuracy for single cassava leaves ranges
-  from about 20% to 60%. The UI pushes for 3–6 leaves from top, middle and bottom, averages their
-  probabilities, and returns "uncertain" when the top probability is below 0.55.
-- **CBSD is often cryptic.** Leaf symptoms can be faint or absent while roots rot. A "healthy" leaf
-  result does not rule CBSD out, so root inspection is still needed.
-- **Inference is server-side in this MVP.** The quantized `.tflite` export is the path to real
-  on-device inference (TFLite / TF.js / Android). Offline mode currently queues reports; it does
-  not diagnose offline.
-- **Small training subsample** (at most 3,000 images, a few epochs on CPU), and the test set comes from
-  the same Ugandan source as training. Expect worse results on other regions, phones and lighting.
-- **The dashboard seed data is synthetic** (`scripts/seed_demo.py`). The alert shown is an injected
-  CBSD spike, not a real outbreak.
-- No auth, no rate limiting, SQLite only, Leaflet/OSM tiles fetched from a CDN.
+- **Inference runs on the server.** Photos are uploaded and classified by FastAPI. The 1.1 MB
+  quantized `models/cassava.tflite` is the path to on-device inference (TFLite on Android or
+  TF.js), but it isn't wired in yet. Offline mode queues reports and sends them on reconnect; it
+  does not diagnose offline.
+- **Classifier accuracy is modest** (`models/eval.json`): 75.2% overall on 500 balanced held-out
+  iCassava images. Per class: CMD 83%, CGM 72%, CBB 66%, **CBSD 61%**, healthy 94%. It was trained on
+  only 1,500 images from one Ugandan source, so expect lower accuracy on other regions, phones and
+  lighting.
+- **Single-leaf results are unreliable, especially for CBSD.** Published single-leaf field accuracy
+  for cassava ranges from about 20% to 60%. CBSD leaf symptoms are often faint or absent while the
+  roots rot. The app averages 3–6 leaves per plant, flags `single_leaf_unreliable` for one-photo
+  submissions, and returns "uncertain" when the top probability is below 0.55. A "healthy" result
+  does not rule CBSD out.
+- **The seed data is synthetic.** `scripts/seed_demo.py` generates the dashboard's reports, and the
+  alert shown is an injected CBSD spike, not a real outbreak.
+- **The alerts are not validated.** The detector's thresholds (p < 0.01, ratio ≥ 2, ≥ 5 cases,
+  0.1° cells, 7-day and 60-day windows) have not been checked against real ground truth. Before any
+  operational use, they must be validated against field survey data such as the NaCRRI Uganda CBSD
+  surveys or national cassava disease surveillance data.
+- There is no authentication or rate limiting, the database is SQLite, and map tiles and Leaflet
+  come from public CDNs, so the dashboard map needs internet access. Place labels come from a fixed
+  town list, not reverse geocoding.
+- Load time: the capture page is 24 KB with no render-blocking scripts. It loads in about 0.45 s at
+  150 ms RTT / 1.6 Mbps, and about 1.3 s under DevTools' stricter "Fast 3G" preset (562 ms RTT).
