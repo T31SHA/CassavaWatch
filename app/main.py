@@ -1,12 +1,14 @@
 """CassavaWatch FastAPI app."""
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,16 +16,35 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from . import inference
-from .advisory import get_advice, get_advice_all
-from .models import Alert, Report, get_session, init_db, utcnow
+from .advisory import get_advice_all
+from .config import get_settings
+from .llm_advisory import generate_advice
+from .models import Alert, Report, SessionLocal, get_session, init_db, utcnow
 from .surveillance import cell_bounds, run_surveillance
 
 BASE = Path(__file__).resolve().parent
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("cassavawatch")
+
+
+def _seed_if_empty() -> None:
+    """SEED_DEMO_DATA=true: on an empty DB (e.g. fresh Render deploy) load synthetic demo reports + alerts."""
+    s = SessionLocal()
+    try:
+        empty = s.query(Report).count() == 0
+    finally:
+        s.close()
+    if empty:
+        from scripts import seed_demo
+        seed_demo.main()  # seeds reports and runs the surveillance pass
 
 
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    if get_settings().seed_demo_data:
+        _seed_if_empty()
+    log.info("model backend=%s advisory mode=%s", inference.backend_name(), get_settings().effective_advisory_mode)
     yield
 
 
@@ -47,6 +68,7 @@ class Advice(BaseModel):
     lang: str
     summary: str
     bullets: List[str]
+    source: str = "template"  # "llm" (AI-assisted, Qwen) | "template" (standard guidance)
 
 
 class DiagnoseOut(BaseModel):
@@ -120,6 +142,7 @@ async def diagnose(
     lon: float = Form(...),
     lang: str = Form("en"),
     device_id: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),  # per-request Qwen model override, for demos
     s=Depends(get_session),
 ):
     if not images or len(images) > MAX_IMAGES:
@@ -143,11 +166,22 @@ async def diagnose(
     s.commit()
     before = s.query(Alert).filter(Alert.status == "active").count()
     after = len(run_surveillance(s))
-    return DiagnoseOut(report_id=rep.id, leaves=leaves, advice=get_advice(plant["label"], lang),
-                       advice_all=get_advice_all(plant["label"]),
+    lang = lang if lang in ("en", "sw") else "en"
+    advice_all = get_advice_all(plant["label"])
+    llm = await run_in_threadpool(generate_advice, plant["label"], plant["confidence"], lang,
+                                  plant["n_leaves"], lat, lon, (model or "").strip() or None)
+    advice_all[lang] = {**advice_all[lang], "bullets": llm["advice_bullets"], "source": llm["source"]}
+    return DiagnoseOut(report_id=rep.id, leaves=leaves, advice=advice_all[lang], advice_all=advice_all,
                        single_leaf_unreliable=plant["n_leaves"] == 1,
                        backend=inference.backend_name(), new_alerts=max(0, after - before),
                        **{k: plant[k] for k in ("label", "top_class", "confidence", "uncertain", "probs", "n_leaves")})
+
+
+@app.get("/api/config")
+def config():
+    st = get_settings()
+    return {"advisory_mode": st.effective_advisory_mode, "qwen_model": st.qwen_model,
+            "qwen_base_url": st.qwen_base_url, "model_backend": inference.backend_name()}
 
 
 @app.get("/api/reports", response_model=List[ReportOut])

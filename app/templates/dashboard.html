@@ -3,177 +3,108 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CassavaWatch — Officer dashboard</title>
+  <meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A101C" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="CassavaWatch surveillance dashboard for extension officers.">
+  <title>Surveillance overview · CassavaWatch</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23147D4A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z'/%3E%3Cpath d='M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"></noscript>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/icons.js" defer></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script src="/static/dashboard.js" defer></script>
 </head>
 <body class="dash">
-  <header class="bar">
-    <span class="brand">🌿 CassavaWatch <small>Surveillance</small></span>
-    <nav><button id="run" type="button" class="btn">Run surveillance</button> <a href="/">Farmer app</a></nav>
-  </header>
-  <div class="strip">
-    <div><b id="s-reports">–</b><span>reports, last 7 days</span></div>
-    <div><b id="s-alerts">–</b><span>active alerts</span></div>
-    <div><b id="s-top">–</b><span>top disease (7 days)</span></div>
+  <div class="shell">
+    <aside class="rail">
+      <a class="wordmark" href="/dashboard"><i data-icon="leaf"></i>CassavaWatch</a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#overview" aria-current="true"><i data-icon="layout-dashboard"></i><span>Overview</span></a>
+        <a href="#alerts"><i data-icon="bell"></i><span>Alerts</span><span id="nav-alerts" class="nav-count num"></span></a>
+        <a href="#reports"><i data-icon="table-2"></i><span>Reports</span></a>
+      </nav>
+      <div class="rail-foot">
+        <a class="rail-link" href="/"><i data-icon="camera" class="sm"></i>Farmer app</a>
+        <dl class="status">
+          <div><dt>Model</dt><dd id="st-model">…</dd></div>
+          <div><dt>Advice</dt><dd id="st-advice">…</dd></div>
+        </dl>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="page-head" id="overview">
+        <div class="title-row">
+          <div>
+            <h1>Surveillance overview</h1>
+            <p class="sub" id="updated">Loading</p>
+          </div>
+          <div class="segmented" role="group" aria-label="Date range" id="range">
+            <button type="button" data-days="7" aria-pressed="true">7d</button><button type="button" data-days="30" aria-pressed="false">30d</button><button type="button" data-days="60" aria-pressed="false">60d</button>
+          </div>
+        </div>
+        <div class="chips" role="group" aria-label="Filter map and reports by disease" id="chips"></div>
+      </header>
+
+      <section class="kpis" aria-label="Key figures">
+        <article class="card kpi"><h2 id="k-reports-l">Reports · 7d</h2><p class="kpi-num num" id="k-reports"><span class="skel"></span></p><p class="delta num" id="k-reports-d"></p></article>
+        <article class="card kpi"><h2>Active alerts</h2><p class="kpi-num num" id="k-alerts"><span class="skel"></span></p><p class="delta num" id="k-alerts-d"></p></article>
+        <article class="card kpi"><h2 id="k-top-l">Top disease · 7d</h2><p class="kpi-num" id="k-top"><span class="skel"></span></p><p class="delta num" id="k-top-d"></p></article>
+        <article class="card kpi"><h2 id="k-cells-l">Cells monitored · 7d</h2><p class="kpi-num num" id="k-cells"><span class="skel"></span></p><p class="delta num" id="k-cells-d"></p></article>
+      </section>
+
+      <div class="split">
+        <section class="card map-card" aria-label="Map of reports and alert cells">
+          <div id="map"></div>
+          <p id="map-empty" class="map-empty" hidden>No reports match this filter.</p>
+        </section>
+
+        <section class="alerts" id="alerts" aria-labelledby="alerts-h">
+          <div class="section-head">
+            <h2 id="alerts-h">Active alerts</h2>
+            <div class="popover-wrap">
+              <button type="button" class="icon-btn" id="info-btn" aria-label="How alerts work" aria-expanded="false" aria-controls="info-pop"><i data-icon="info"></i></button>
+              <div class="popover card" id="info-pop" role="dialog" aria-label="How alerts work" hidden>
+                <h3>How alerts work</h3>
+                <p>Each 0.1° grid cell's cases from the last 7 days are compared with what its own 60-day baseline predicts for the number of reports it received.</p>
+                <p>An alert needs at least 5 cases, twice the expected count and a Poisson p-value below 0.01, so busy areas with a normal disease mix do not trigger alerts.</p>
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost push" id="run"><i data-icon="refresh-cw" class="sm"></i>Re-run</button>
+          </div>
+          <ul id="alert-list" class="alert-list" aria-live="polite">
+            <li class="alert-card skel-card"><span class="skel" style="width:40%;height:20px"></span><span class="skel" style="width:70%;height:16px"></span><span class="skel" style="width:55%;height:14px"></span></li>
+            <li class="alert-card skel-card"><span class="skel" style="width:35%;height:20px"></span><span class="skel" style="width:65%;height:16px"></span><span class="skel" style="width:50%;height:14px"></span></li>
+          </ul>
+          <p id="alerts-empty" class="empty" hidden>No active alerts. Every cell is within its usual range.</p>
+        </section>
+      </div>
+
+      <section class="card reports" id="reports" aria-labelledby="reports-h">
+        <div class="section-head pad">
+          <h2 id="reports-h">Reports</h2>
+          <span id="reports-count" class="muted num count"></span>
+        </div>
+        <div class="table-wrap" tabindex="0" aria-label="Reports table, scrollable">
+          <table class="table">
+            <thead><tr>
+              <th scope="col">Reported</th><th scope="col">Disease</th><th scope="col" class="r">Confidence</th>
+              <th scope="col" class="r">Leaves</th><th scope="col" class="r">Latitude</th><th scope="col" class="r">Longitude</th>
+              <th scope="col">Device</th>
+            </tr></thead>
+            <tbody id="report-rows"></tbody>
+          </table>
+          <p id="reports-empty" class="empty pad" hidden>No reports match this filter.</p>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <div class="dash-body">
-    <section class="panel alerts-panel" aria-labelledby="alerts-h">
-      <div class="panel-h">
-        <h2 id="alerts-h">Active alerts</h2>
-        <details class="info">
-          <summary aria-label="How alerts work">ⓘ How alerts work</summary>
-          <p>Each 0.1° cell's last-7-day positives are compared with what its <b>own</b> 60-day baseline
-            rate predicts for the number of reports it received this week; an alert needs ≥5 cases,
-            ≥2× expected and Poisson p&lt;0.01. Because the expected count scales with report volume,
-            a place with many active reporters but a normal disease mix does not alert — unlike raw
-            density hotspots.</p>
-        </details>
-      </div>
-      <div class="table-wrap">
-        <table id="alerts">
-          <thead><tr><th>Disease</th><th>Place</th><th>Obs / exp</th><th>Ratio</th><th>p</th><th>Age</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <p id="alerts-empty" class="empty" hidden>✅ No active alerts. Disease levels in every cell are
-        consistent with their local baseline.</p>
-      <p id="flash" class="flash" role="status" aria-live="polite"></p>
-    </section>
-
-    <section class="panel map-panel" aria-label="Map">
-      <div class="filters">
-        <label>Disease
-          <select id="f-disease">
-            <option value="all">All</option>
-            <option value="cmd">CMD</option><option value="cbsd">CBSD</option>
-            <option value="cgm">CGM</option><option value="cbb">CBB</option>
-            <option value="healthy">Healthy</option><option value="uncertain">Uncertain</option>
-          </select>
-        </label>
-        <label>Period
-          <select id="f-days">
-            <option value="7">Last 7 days</option><option value="30">Last 30 days</option>
-            <option value="60" selected>Last 60 days</option>
-          </select>
-        </label>
-        <span id="f-count" class="sub"></span>
-      </div>
-      <div id="map-wrap">
-        <div id="map" role="application" aria-label="Map of reports and alert cells"></div>
-        <div id="map-empty" class="map-empty" hidden>No reports for this filter.</div>
-      </div>
-    </section>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-  const COLORS = {cmd: "#c62828", cbsd: "#6d4c41", cgm: "#ef6c00", cbb: "#7b1fa2", healthy: "#2e7d32", uncertain: "#9e9e9e"};
-  const LABELS = {cmd: "CMD (mosaic)", cbsd: "CBSD (brown streak)", cgm: "CGM (green mite)",
-                  cbb: "CBB (bacterial blight)", healthy: "Healthy", uncertain: "Uncertain"};
-  // Fixed town list for labelling alert cells (no reverse geocoding).
-  const TOWNS = [
-    ["Busia", 0.461, 34.112], ["Nambale", 0.456, 34.251], ["Butula", 0.339, 34.338], ["Malaba", 0.636, 34.281],
-    ["Funyula", 0.296, 34.108], ["Port Victoria", 0.098, 33.976],
-    ["Mwanza", -2.516, 32.917], ["Misungwi", -2.850, 33.083], ["Magu", -2.583, 33.433],
-    ["Kisesa", -2.553, 33.041], ["Nyamagana", -2.530, 32.900], ["Igoma", -2.458, 32.960],
-  ];
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
-  const km = (a, b, c, d) => Math.round(Math.hypot((a - c) * 111, (b - d) * 111 * Math.cos(a * Math.PI / 180)));
-  function place(lat, lon) {
-    let best = null;
-    for (const [n, tl, tn] of TOWNS) { const d = km(lat, lon, tl, tn); if (!best || d < best[1]) best = [n, d]; }
-    return best[1] <= 3 ? best[0] : `${best[1]} km from ${best[0]}`;
-  }
-  const ageDays = ts => Math.max(0, Math.floor((Date.now() - Date.parse(ts + "Z")) / 864e5));
-
-  const map = L.map("map", {scrollWheelZoom: false}).setView([-1.0, 33.5], 7);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {maxZoom: 18, attribution: "© OpenStreetMap"}).addTo(map);
-  const reportLayer = L.layerGroup().addTo(map), alertLayer = L.layerGroup().addTo(map);
-  const legend = L.control({position: "bottomleft"});
-  legend.onAdd = () => {
-    const d = L.DomUtil.create("div", "legend");
-    d.innerHTML = Object.entries(COLORS).map(([k, c]) => `<div><i style="background:${c}"></i>${LABELS[k]}</div>`).join("")
-      + `<div><i class="sq"></i>Alert cell</div>`;
-    return d;
-  };
-  legend.addTo(map);
-
-  let reports = [], alerts = [], fitted = false;
-  function flash(msg) { const f = document.getElementById("flash"); f.textContent = msg; setTimeout(() => f.textContent = "", 4000); }
-
-  function drawReports() {
-    const dis = document.getElementById("f-disease").value;
-    const shown = reports.filter(r => dis === "all" || r.disease === dis);
-    reportLayer.clearLayers();
-    for (const r of shown) {
-      L.circleMarker([r.lat, r.lon], {radius: 5, weight: 1, color: "#fff", fillOpacity: 0.85,
-        fillColor: COLORS[r.disease] || "#999"})
-        .bindPopup(`<b>${esc(LABELS[r.disease] || r.disease)}</b> · ${Math.round(r.confidence * 100)}%<br>
-          ${esc(r.n_leaves)} leaves · ${ageDays(r.ts)} d ago`).addTo(reportLayer);
-    }
-    document.getElementById("map-empty").hidden = shown.length > 0;
-    document.getElementById("f-count").textContent = `${shown.length} reports`;
-    if (shown.length && !fitted) { map.fitBounds(shown.map(r => [r.lat, r.lon]), {padding: [20, 20]}); fitted = true; }
-  }
-
-  function drawAlerts() {
-    alertLayer.clearLayers();
-    const tb = document.querySelector("#alerts tbody");
-    tb.innerHTML = "";
-    document.getElementById("alerts").hidden = alerts.length === 0;
-    document.getElementById("alerts-empty").hidden = alerts.length > 0;
-    for (const a of alerts) {
-      const [[s, w], [n, e]] = a.bounds, clat = (s + n) / 2, clon = (w + e) / 2;
-      const where = place(clat, clon), age = ageDays(a.ts);
-      const pop = `<b>ALERT: ${esc(a.disease.toUpperCase())}</b><br>${esc(where)}<br>
-        cell centre ${clat.toFixed(2)}, ${clon.toFixed(2)}<br>
-        observed <b>${a.observed}</b> vs expected ${a.expected.toFixed(1)} (${a.ratio.toFixed(1)}×)<br>
-        p = ${a.p_value.toExponential(1)}`;
-      const rect = L.rectangle(a.bounds, {color: "#d50000", weight: 3, fillOpacity: 0.15}).bindPopup(pop).addTo(alertLayer);
-      const tr = document.createElement("tr");
-      tr.tabIndex = 0;
-      tr.innerHTML = `<td><span class="dot" style="background:${COLORS[a.disease]}"></span><b>${esc(a.disease.toUpperCase())}</b></td>
-        <td>${esc(where)}<br><small>${clat.toFixed(2)}, ${clon.toFixed(2)}</small></td>
-        <td><b>${a.observed}</b> / ${a.expected.toFixed(1)}</td><td>${a.ratio.toFixed(1)}×</td>
-        <td>${a.p_value.toExponential(1)}</td><td>${age} d</td>
-        <td><button type="button" class="btn review">Review</button></td>`;
-      const focus = () => { map.fitBounds(a.bounds, {maxZoom: 11}); rect.openPopup();
-        document.querySelectorAll("#alerts tr.sel").forEach(x => x.classList.remove("sel")); tr.classList.add("sel");
-        if (window.innerWidth < 900) document.getElementById("map").scrollIntoView({behavior: "smooth"}); };
-      tr.onclick = focus;
-      tr.onkeydown = ev => { if (ev.key === "Enter") focus(); };
-      tr.querySelector("button").onclick = async ev => {
-        ev.stopPropagation();
-        const r = await fetch(`/api/alerts/${a.id}/review`, {method: "POST"});
-        if (r.ok) flash(`Alert ${a.disease.toUpperCase()} at ${where} marked reviewed.`);
-        loadAlerts();
-      };
-      tb.appendChild(tr);
-    }
-  }
-
-  async function loadReports() {
-    reports = await (await fetch(`/api/reports?days=${document.getElementById("f-days").value}`)).json();
-    drawReports();
-  }
-  async function loadAlerts() {
-    const [a, s] = await Promise.all([fetch("/api/alerts"), fetch("/api/summary")].map(p => p.then(r => r.json())));
-    alerts = a; drawAlerts();
-    document.getElementById("s-reports").textContent = s.reports_7d;
-    document.getElementById("s-alerts").textContent = s.active_alerts;
-    document.getElementById("s-top").textContent = s.top_disease ? `${s.top_disease.toUpperCase()} (${s.top_disease_count})` : "–";
-  }
-  document.getElementById("f-disease").onchange = drawReports;
-  document.getElementById("f-days").onchange = loadReports;
-  document.getElementById("run").onclick = async () => {
-    const r = await (await fetch("/api/surveillance/run", {method: "POST"})).json();
-    flash(`Surveillance run: ${r.length} active alert${r.length === 1 ? "" : "s"}.`);
-    loadAlerts(); loadReports();
-  };
-  loadAlerts(); loadReports();
-  </script>
+  <div class="toast-region" aria-live="polite" role="status"><div id="toast" class="toast"></div></div>
 </body>
 </html>

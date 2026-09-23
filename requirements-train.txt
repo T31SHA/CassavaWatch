@@ -1,0 +1,4 @@
+# Training / export only (ml/train.py, ml/export_tflite.py, ml/fetch_icassava.py). Not installed on Render.
+-r requirements.txt
+tensorflow-cpu==2.16.2
+tensorflow-datasets==4.9.10

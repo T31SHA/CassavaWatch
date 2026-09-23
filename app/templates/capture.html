@@ -3,84 +3,130 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#1f5c2a">
+  <meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A101C" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Photograph a cassava plant and get a diagnosis with practical advice.">
   <title>CassavaWatch</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23147D4A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z'/%3E%3Cpath d='M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"></noscript>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/capture.css">
+  <script src="/static/icons.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body class="capture">
-  <header class="bar">
-    <span class="brand">🌿 CassavaWatch</span>
-    <span id="net" class="pill" role="status" aria-live="polite"></span>
-    <div class="lang" role="group" aria-label="Language">
-      <button type="button" data-lang="en">EN</button><button type="button" data-lang="sw">SW</button>
+  <header class="top">
+    <div class="top-row">
+      <a class="wordmark" href="/"><i data-icon="leaf"></i>CassavaWatch</a>
+      <div class="segmented lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="sw" aria-pressed="false">SW</button>
+      </div>
     </div>
+    <p id="net" class="pill net" role="status" aria-live="polite"><span class="dot"></span><span id="net-text"></span></p>
   </header>
 
-  <ol class="steps" aria-label="Progress">
-    <li data-step="1"><b>1</b><span data-i18n="step1"></span></li>
-    <li data-step="2"><b>2</b><span data-i18n="step2"></span></li>
-    <li data-step="3"><b>3</b><span data-i18n="step3"></span></li>
-  </ol>
-
-  <main>
-    <div id="msg" class="msg" role="alert" hidden></div>
+  <main id="main">
+    <div class="progress" aria-hidden="true"><span></span><span></span><span></span></div>
 
     <!-- step 1: photograph -->
-    <section id="s1">
-      <h1 class="instr" data-i18n="instr"></h1>
-      <p class="sub" data-i18n="instr2"></p>
-      <label class="bigbtn" for="photo"><span data-i18n="take"></span></label>
-      <input id="photo" type="file" accept="image/*" capture="environment" multiple>
-      <p class="counter"><b id="count">0</b> / 6 <span data-i18n="leaves"></span>
-        <span id="count-hint" class="hint"></span></p>
-      <div id="thumbs"></div>
+    <section id="s1" aria-labelledby="s1-h">
+      <p class="eyebrow" data-i18n="step1_of"></p>
+      <h1 id="s1-h" data-i18n="instr"></h1>
+      <p class="lede" data-i18n="instr2"></p>
 
-      <div id="locbox">
-        <p id="locstatus"></p>
-        <label id="district-wrap" hidden>
-          <span data-i18n="pick_label"></span>
-          <select id="district">
-            <option value="" data-i18n="pick"></option>
-            <option value="0.460,34.111">Busia (KE)</option>
-            <option value="0.565,34.560">Bungoma (KE)</option>
-            <option value="0.520,34.300">Butula (KE)</option>
-            <option value="-2.516,32.900">Mwanza (TZ)</option>
-            <option value="-2.700,33.000">Misungwi (TZ)</option>
-            <option value="-3.370,32.840">Kwimba (TZ)</option>
-            <option value="0.347,32.583">Kampala (UG)</option>
-          </select>
-        </label>
+      <input id="photo" class="sr-only" type="file" accept="image/*" capture="environment" multiple>
+      <label id="tile" class="tile" for="photo">
+        <span class="tile-icon"><i data-icon="camera"></i></span>
+        <span class="tile-title" id="tile-title"></span>
+        <span class="tile-sub" id="tile-sub"></span>
+      </label>
+
+      <ul id="thumbs" class="thumbs" aria-label="Leaf photos"></ul>
+      <p id="count-line" class="count-line num"></p>
+
+      <div id="locbox" class="loc">
+        <p id="locstatus" class="loc-status"><i data-icon="map-pin" class="sm"></i><span id="loctext"></span></p>
+        <div id="district-wrap" hidden>
+          <label for="district" class="field-label" data-i18n="pick_label"></label>
+          <span class="select-wrap">
+            <select id="district" class="select">
+              <option value="" data-i18n="pick"></option>
+              <option value="0.460,34.111">Busia (KE)</option>
+              <option value="0.565,34.560">Bungoma (KE)</option>
+              <option value="0.520,34.300">Butula (KE)</option>
+              <option value="-2.516,32.900">Mwanza (TZ)</option>
+              <option value="-2.700,33.000">Misungwi (TZ)</option>
+              <option value="-3.370,32.840">Kwimba (TZ)</option>
+              <option value="0.347,32.583">Kampala (UG)</option>
+            </select>
+            <i data-icon="chevron-down"></i>
+          </span>
+        </div>
       </div>
 
-      <button id="submit" type="button" class="primary" disabled data-i18n="submit"></button>
+      <div id="msg" class="note" role="alert" hidden><i data-icon="circle-alert"></i><span id="msg-text"></span></div>
+
+      <button id="submit" type="button" class="btn btn-primary" disabled data-i18n="submit"></button>
+      <p id="why" class="why"></p>
     </section>
 
-    <!-- step 2: diagnosing -->
-    <section id="s2" hidden>
-      <div class="spinner" aria-hidden="true"></div>
-      <p class="center big" data-i18n="sending"></p>
-      <p class="center sub" data-i18n="sending2"></p>
+    <!-- step 2: analysing -->
+    <section id="s2" aria-labelledby="s2-h" hidden>
+      <p class="eyebrow" data-i18n="step2_of"></p>
+      <h1 id="s2-h" data-i18n="sending"></h1>
+      <div class="card result skeleton" aria-hidden="true">
+        <span class="skel" style="width: 112px; height: 28px; border-radius: 999px"></span>
+        <span class="skel" style="width: 78%; height: 32px; margin-top: 16px"></span>
+        <span class="skel" style="width: 46%; height: 18px; margin-top: 8px"></span>
+        <span class="skel" style="width: 100%; height: 6px; margin-top: 28px; border-radius: 999px"></span>
+        <span class="skel" style="width: 92%; height: 16px; margin-top: 32px"></span>
+        <span class="skel" style="width: 84%; height: 16px; margin-top: 16px"></span>
+        <span class="skel" style="width: 88%; height: 16px; margin-top: 16px"></span>
+      </div>
+      <p class="lede center" data-i18n="sending2" role="status"></p>
     </section>
 
     <!-- step 3: result -->
-    <section id="s3" hidden>
-      <article id="card" class="card">
-        <p id="r-badge" class="badge"></p>
-        <h2 id="r-name"></h2>
-        <p id="r-name2" class="name2"></p>
-        <p id="r-summary" class="summary"></p>
-        <div id="r-uncertain" class="todo" hidden></div>
-        <div id="r-single" class="todo soft" hidden data-i18n="single"></div>
-        <h3 data-i18n="what_to_do"></h3>
-        <ul id="r-bullets"></ul>
-        <p id="r-conf" class="sub"></p>
-        <details><summary data-i18n="details"></summary><table id="r-probs"></table></details>
+    <section id="s3" aria-labelledby="r-name" hidden>
+      <p class="eyebrow" data-i18n="step3_of"></p>
+      <article id="card" class="card result">
+        <p id="r-chip" class="chip"></p>
+        <h1 id="r-name" class="r-name"></h1>
+        <p id="r-name2" class="r-name2"></p>
+        <p id="r-summary" class="r-summary"></p>
+
+        <div class="conf">
+          <div class="conf-row"><span data-i18n="conf"></span><span id="r-conf-num" class="num conf-num"></span></div>
+          <div class="bar" role="presentation"><span id="r-bar"></span></div>
+          <p id="r-leaves" class="conf-sub num"></p>
+        </div>
+
+        <div id="r-uncertain" class="note warn" hidden><i data-icon="circle-help"></i><span id="r-uncertain-text"></span></div>
+        <div id="r-single" class="note warn" hidden><i data-icon="circle-alert"></i><span data-i18n="single"></span></div>
+
+        <h2 class="advice-h" data-i18n="what_to_do"></h2>
+        <ul id="r-bullets" class="advice"></ul>
+
+        <button id="more-photos" type="button" class="btn btn-primary" data-i18n="more_photos" hidden></button>
+
+        <details class="details">
+          <summary><span data-i18n="details"></span><i data-icon="chevron-down" class="sm"></i></summary>
+          <table id="r-probs" class="probs"></table>
+        </details>
+
+        <footer class="result-foot">
+          <p id="r-source" class="source"></p>
+          <button id="again" type="button" class="btn btn-secondary" data-i18n="again"></button>
+        </footer>
       </article>
-      <button id="again" type="button" class="primary" data-i18n="again"></button>
     </section>
 
-    <p class="foot"><a href="/dashboard" data-i18n="officer"></a></p>
+    <a class="officer" href="/dashboard"><span data-i18n="officer"></span><i data-icon="arrow-right" class="sm"></i></a>
   </main>
+
+  <div class="toast-region" aria-live="polite" role="status"><div id="toast" class="toast"></div></div>
 </body>
 </html>

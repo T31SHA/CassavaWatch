@@ -16,11 +16,12 @@ Mobile-first web app for cassava disease diagnosis and denominator-aware disease
 ## Quick start
 
 Prerequisites: Linux/macOS with `make`, [`uv`](https://docs.astral.sh/uv/) (it fetches Python 3.11
-itself) and internet access for the first install. That install includes `tensorflow-cpu`, about 214 MB.
+itself) and internet access for the first install. The runtime install is about 270 MB and runs the
+model with `tflite-runtime`. Full TensorFlow is only needed for training (`make setup-train`).
 
 ```bash
 make setup      # uv venv (Python 3.11) + pip install -r requirements.txt
-make test       # pytest (15 tests)
+make test       # pytest (19 tests)
 make seed       # ~400 synthetic reports around Busia (KE) and Mwanza (TZ) + one injected CBSD spike
 make run        # http://localhost:8000/  (farmer)   http://localhost:8000/dashboard  (officer)
 ```
@@ -28,11 +29,13 @@ make run        # http://localhost:8000/  (farmer)   http://localhost:8000/dashb
 The trained model (`models/cassava.tflite`) is committed, so you only need to retrain to change it:
 
 ```bash
+make setup-train  # adds tensorflow-cpu + tensorflow-datasets (requirements-train.txt)
 make fetch      # balanced iCassava subsample via HTTP range requests (~240 MB) -> data/icassava/
 make train      # train + export .keras/.tflite + models/eval.json (about 3 min on CPU)
 ```
 
-The SQLite database is `./cassavawatch.db` (override with `CASSAVAWATCH_DB`). It is created on first
+The SQLite database is `./cassavawatch.db` (override with `DATABASE_URL` or `CASSAVAWATCH_DB`). With
+`SEED_DEMO_DATA=true` an empty database is seeded automatically on boot. It is created on first
 start and wiped and refilled by `make seed`. Mobile browsers only allow geolocation over HTTPS or on
 `localhost`. When it is unavailable, the app shows a manual district picker.
 
@@ -80,13 +83,54 @@ every new report and on `POST /api/surveillance/run`.
 
 | method | path | |
 |---|---|---|
-| POST | `/api/diagnose` | multipart: `images` (1–8), `lat`, `lon`, `lang` (en/sw), `device_id`. Returns plant diagnosis, `advice` + `advice_all` (en/sw), `single_leaf_unreliable`. 400 for non-images, 503 if no model |
+| POST | `/api/diagnose` | multipart: `images` (1–8), `lat`, `lon`, `lang` (en/sw), `device_id`, optional `model` (Qwen model override). Returns plant diagnosis, `advice` + `advice_all` (en/sw; each has `source`: `llm`/`template`), `single_leaf_unreliable`. 400 for non-images, 503 if no model |
 | GET | `/api/reports?days=60` | reports |
 | GET | `/api/alerts?status=active` | alerts (`active`/`reviewed`/`resolved`/`all`) with Leaflet bounds |
 | POST | `/api/alerts/{id}/review` | mark reviewed |
 | POST | `/api/surveillance/run` | rerun detector |
 | GET | `/api/summary` | dashboard summary strip |
+| GET | `/api/config` | advisory mode (`llm`/`template`), current Qwen model, model backend |
 | GET | `/health` | status + which model backend is loaded |
+
+## AI-assisted advice (optional, Qwen)
+
+With `QWEN_API_KEY` set, `app/llm_advisory.py` asks a Qwen model (through ModelScope's OpenAI-compatible
+endpoint) to rewrite the standard advice as 3–4 plain-language bullets in the farmer's language. The
+template advice from `app/advisory.py` goes into the prompt as grounding, so the model refines it rather
+than inventing its own. Responses are cached in memory for 1 hour per (disease, language, confidence
+bucket, model). Every call logs its source and latency.
+
+This layer is optional. If there is no key, `ADVISORY_MODE=template` is set, the call times out
+(`QWEN_TIMEOUT_S`, default 8 s) or anything else goes wrong, the app silently uses the template advice.
+Diagnosis never depends on the LLM. The result card shows **Advice: AI-assisted (Qwen)** or **Advice:
+standard guidance**. For a side-by-side demo, pass e.g. `-F model=Qwen-Ambassador/Qwen3.8-plus` to
+`/api/diagnose`. See `.env.example` for all settings.
+
+## Deploy to Render
+
+1. Push the repo to GitHub. In Render go to **New → Blueprint**, pick the repo, and Render reads
+   `render.yaml`. That file defines a free Python 3.11 web service with build command
+   `pip install -r requirements.txt && python scripts/fetch_model.py`, start command
+   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, and health check `/health`.
+2. In the dashboard, set **`QWEN_API_KEY`** (it is marked `sync: false` and is optional; without it the
+   app uses standard advice). **Never commit the API key or a `.env` file.** `.env` is gitignored.
+3. The model: `models/cassava.tflite` (1.1 MB) is committed, so no action is needed. If you retrain and
+   the file grows past about 50 MB, keep it out of git and publish it as a release asset instead:
+   `gh release create model-v1 models/cassava.tflite`. Then set `MODEL_URL` to
+   `https://github.com/<owner>/<repo>/releases/download/model-v1/cassava.tflite`.
+   `scripts/fetch_model.py` downloads it at build time and skips the download if the file is already
+   present. With no model at all, the app still deploys: the dashboard works and `/api/diagnose`
+   returns 503 with a clear message.
+4. Free-tier caveats:
+   - The service sleeps after about 15 minutes idle, so the first request after that takes about 30 s
+     (a cold start).
+   - The disk is ephemeral, so the SQLite database resets on each deploy or restart. That is fine for a
+     demo, because `SEED_DEMO_DATA=true` reseeds synthetic reports and alerts on boot.
+   - To keep real reports, switch to the Starter plan and uncomment the `disk:` block in `render.yaml`
+     (`cassavawatch-data`, mounted on `data/`).
+
+Runtime inference uses `tflite-runtime`, not TensorFlow, to keep the build small and memory under the
+free tier's 512 MB.
 
 ## Model
 

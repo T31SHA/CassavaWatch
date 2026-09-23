@@ -1,11 +1,14 @@
 """SQLAlchemy models + session helpers (SQLite)."""
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DB_URL = os.environ.get("CASSAVAWATCH_DB", "sqlite:///./cassavawatch.db")
+DB_URL = os.environ.get("DATABASE_URL") or os.environ.get("CASSAVAWATCH_DB", "sqlite:///./cassavawatch.db")
+if DB_URL.startswith("sqlite:///") and ":memory:" not in DB_URL:
+    Path(DB_URL[len("sqlite:///"):]).parent.mkdir(parents=True, exist_ok=True)
 
 Base = declarative_base()
 

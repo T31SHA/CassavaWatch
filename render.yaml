@@ -1,0 +1,32 @@
+# Render Blueprint for CassavaWatch.
+# Free plan: the service sleeps after ~15 min idle (cold start ~30 s) and the disk is ephemeral.
+services:
+  - type: web
+    name: cassavawatch
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python scripts/fetch_model.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: QWEN_BASE_URL
+        value: https://api-inference.modelscope.ai/v1
+      - key: QWEN_MODEL
+        value: Qwen-Ambassador/Qwen3.7-Max
+      - key: QWEN_API_KEY
+        sync: false          # set in the Render dashboard; never commit it
+      - key: DATABASE_URL
+        value: sqlite:///./data/db.sqlite
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: MODEL_URL
+        sync: false          # optional: only needed if models/cassava.tflite is not in the repo
+    # Persistent disk requires the Starter plan (not available on free). On free tier, SQLite
+    # resets on every deploy/restart, which is fine for a demo: SEED_DEMO_DATA reseeds on boot.
+    # Uncomment after switching `plan: starter`:
+    # disk:
+    #   name: cassavawatch-data
+    #   mountPath: /opt/render/project/src/data
+    #   sizeGB: 1

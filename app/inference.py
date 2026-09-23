@@ -1,6 +1,9 @@
 """Model loading + per-leaf prediction + per-plant aggregation.
 
 Backend preference: models/cassava.tflite -> models/cassava.keras.
+The .tflite file is run with the lightweight `tflite-runtime` interpreter (the
+production dependency); full TensorFlow is only used if it happens to be
+installed (training env, see requirements-train.txt) or for the .keras fallback.
 If neither exists the app still boots, backend is "none" and predict() raises
 ModelUnavailable (the API turns that into a 503). A colour-heuristic stub is
 available for UI development only with CASSAVAWATCH_STUB=1 (backend="stub").
@@ -45,6 +48,18 @@ def _stub_predict(x: np.ndarray) -> np.ndarray:
     return _softmax(logits * 3)
 
 
+def _tflite_interpreter_cls():
+    try:
+        from tflite_runtime.interpreter import Interpreter
+    except ImportError:
+        try:
+            from ai_edge_litert.interpreter import Interpreter
+        except ImportError:
+            import tensorflow as tf
+            Interpreter = tf.lite.Interpreter
+    return Interpreter
+
+
 def _load():
     global _backend
     if _backend is not None:
@@ -55,9 +70,8 @@ def _load():
         return _backend
     if tfl.exists() or ker.exists():
         try:
-            import tensorflow as tf
             if tfl.exists():
-                interp = tf.lite.Interpreter(model_path=str(tfl))
+                interp = _tflite_interpreter_cls()(model_path=str(tfl))
                 interp.allocate_tensors()
                 inp, out = interp.get_input_details()[0], interp.get_output_details()[0]
 
@@ -67,6 +81,7 @@ def _load():
                     return interp.get_tensor(out["index"])[0]
                 _backend = ("tflite", f)
             else:
+                import tensorflow as tf
                 model = tf.keras.models.load_model(str(ker))
                 _backend = ("keras", lambda x: model(x, training=False).numpy()[0])
             return _backend

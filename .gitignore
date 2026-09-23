@@ -5,3 +5,5 @@ data/
 models/saved_model/
 .pytest_cache/
 models/cassava.keras
+.env
+models/*.part
