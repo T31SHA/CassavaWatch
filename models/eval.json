@@ -1,0 +1,67 @@
+{
+  "data_source": "iCassava 2019 subsample (same archive as tfds:cassava; train=1500, test=500)",
+  "placeholder": false,
+  "n_train": 1500,
+  "n_eval": 500,
+  "classes": [
+    "cbb",
+    "cbsd",
+    "cgm",
+    "cmd",
+    "healthy"
+  ],
+  "accuracy": 0.752,
+  "per_class_accuracy": {
+    "cbb": 0.66,
+    "cbsd": 0.61,
+    "cgm": 0.72,
+    "cmd": 0.83,
+    "healthy": 0.94
+  },
+  "confusion_matrix": [
+    [
+      66,
+      9,
+      6,
+      2,
+      17
+    ],
+    [
+      18,
+      61,
+      5,
+      9,
+      7
+    ],
+    [
+      10,
+      1,
+      72,
+      11,
+      6
+    ],
+    [
+      1,
+      5,
+      5,
+      83,
+      6
+    ],
+    [
+      2,
+      4,
+      0,
+      0,
+      94
+    ]
+  ],
+  "confusion_matrix_note": "rows=true, cols=predicted",
+  "epochs": {
+    "head": 8,
+    "finetune": 12
+  },
+  "keras_size_mb": 9.88,
+  "tflite_size_mb": 1.11,
+  "tflite_keras_top1_agreement": 0.95,
+  "train_seconds": 193
+}

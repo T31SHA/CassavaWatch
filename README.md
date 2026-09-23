@@ -76,7 +76,29 @@ colour-heuristic **stub** (`backend: "stub"` in responses) so that the UI still 
 
 ### Metrics
 
-METRICS_PLACEHOLDER
+From `models/eval.json`. Data: iCassava 2019 subsample (same archive as tfds:cassava; train=1500, test=500). The held-out test set is class-balanced, 500 images (100 per class). Trained on CPU in 193 s (8 head epochs + 12 fine-tune epochs).
+
+**Overall accuracy: 75.2%** · `.keras` 9.88 MB · **`.tflite` 1.11 MB** · TFLite/Keras top-1 agreement 95% (100 images)
+
+| class | per-class accuracy (recall) |
+|---|---|
+| cbb | 66% |
+| cbsd | 61% |
+| cgm | 72% |
+| cmd | 83% |
+| healthy | 94% |
+
+Confusion matrix (rows = true, columns = predicted):
+
+| | cbb | cbsd | cgm | cmd | healthy |
+|---|---|---|---|---|---|
+| **cbb** | 66 | 9 | 6 | 2 | 17 |
+| **cbsd** | 18 | 61 | 5 | 9 | 7 |
+| **cgm** | 10 | 1 | 72 | 11 | 6 |
+| **cmd** | 1 | 5 | 5 | 83 | 6 |
+| **healthy** | 2 | 4 | 0 | 0 | 94 |
+
+CBSD is the weakest class, which fits its cryptic leaf symptoms. This is single-leaf accuracy; the app averages 3–6 leaves per plant.
 
 ## Known limits
 
