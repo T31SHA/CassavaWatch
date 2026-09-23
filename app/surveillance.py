@@ -75,13 +75,24 @@ def poisson_sf(k: int, lam: float) -> float:
         return 1.0
     if lam <= 0:
         return 0.0
-    # 1 - P(X <= k-1)
-    term = math.exp(-lam)
-    cdf = term
-    for i in range(1, k):
-        term *= lam / i
-        cdf += term
-    return max(0.0, 1.0 - cdf)
+    if k <= lam:
+        # 1 - P(X <= k-1)
+        term = math.exp(-lam)
+        cdf = term
+        for i in range(1, k):
+            term *= lam / i
+            cdf += term
+        return max(0.0, 1.0 - cdf)
+    # upper tail summed directly (no cancellation, so tiny p-values stay > 0)
+    log_term = -lam + k * math.log(lam) - math.lgamma(k + 1)
+    total, i = 0.0, k
+    while True:
+        t = math.exp(log_term)
+        total += t
+        if t < total * 1e-15 or i > k + 10_000:
+            return min(1.0, total)
+        i += 1
+        log_term += math.log(lam) - math.log(i)
 
 
 def detect(reports: Iterable, now: datetime | None = None) -> list[Detection]:

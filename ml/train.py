@@ -1,6 +1,9 @@
 """Train a cassava disease classifier (MobileNetV3Small, ImageNet init).
 
 Data priority:
+  0. Local iCassava 2019 subsample at ./data/icassava (fetched by ml/fetch_icassava.py
+     via HTTP range requests from the same archive TFDS `cassava` is built from —
+     used first because it avoids a 1.35 GB download on slow links)
   1. TFDS `cassava` (iCassava 2019, field images from Uganda; 5 classes)
   2. Kaggle 2020 cassava set at ./data/ (train.csv + train_images/)
   3. Synthetic PLACEHOLDER DATA (so the pipeline still runs end to end)
@@ -64,6 +67,30 @@ def load_tfds(tf):
     return tr, te, "tfds:cassava (iCassava 2019)"
 
 
+def load_icassava_local(tf):
+    root = DATA_DIR / "icassava"
+    splits = {}
+    for split in ("train", "test"):
+        paths, labels = [], []
+        for i, c in enumerate(CLASSES):
+            for f in sorted((root / split / c).glob("*.jp*g")):
+                paths.append(str(f))
+                labels.append(i)
+        splits[split] = (paths, labels)
+    n_tr, n_te = len(splits["train"][0]), len(splits["test"][0])
+    if n_tr < 200 or n_te < 50:
+        raise FileNotFoundError(f"local iCassava subsample too small (train={n_tr}, test={n_te})")
+    rng = np.random.default_rng(SEED)
+
+    def mk(p, l):
+        idx = rng.permutation(len(p))
+        ds = tf.data.Dataset.from_tensor_slices(([p[i] for i in idx], [l[i] for i in idx]))
+        return ds.map(lambda x, y: (tf.io.decode_jpeg(tf.io.read_file(x), channels=3), tf.cast(y, tf.int64)),
+                      num_parallel_calls=tf.data.AUTOTUNE)
+    return mk(*splits["train"]), mk(*splits["test"]), \
+        f"iCassava 2019 subsample (same archive as tfds:cassava; train={n_tr}, test={n_te})"
+
+
 def load_kaggle(tf):
     import csv
     csv_path, img_dir = DATA_DIR / "train.csv", DATA_DIR / "train_images"
@@ -114,7 +141,7 @@ def main():
     MODEL_DIR.mkdir(exist_ok=True)
 
     src = None
-    for loader in (load_tfds, load_kaggle, load_placeholder):
+    for loader in (load_icassava_local, load_tfds, load_kaggle, load_placeholder):
         try:
             tr, te, src = loader(tf)
             break

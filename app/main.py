@@ -1,6 +1,7 @@
 """CassavaWatch FastAPI app."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -18,17 +19,20 @@ from .models import Alert, Report, get_session, init_db, utcnow
 from .surveillance import cell_bounds, run_surveillance
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="CassavaWatch")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    init_db()
+    yield
+
+
+app = FastAPI(title="CassavaWatch", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
 MAX_IMAGES = 8
-
-
-@app.on_event("startup")
-def _startup():
-    init_db()
 
 
 # ---------- schemas ----------
