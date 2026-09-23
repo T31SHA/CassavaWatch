@@ -1,8 +1,9 @@
 """Model loading + per-leaf prediction + per-plant aggregation.
 
-Backend preference: models/cassava.tflite -> models/cassava.keras -> heuristic stub.
-The stub exists only so the app stays runnable before training finishes; it is
-reported as backend="stub" in API responses.
+Backend preference: models/cassava.tflite -> models/cassava.keras.
+If neither exists the app still boots, backend is "none" and predict() raises
+ModelUnavailable (the API turns that into a 503). A colour-heuristic stub is
+available for UI development only with CASSAVAWATCH_STUB=1 (backend="stub").
 """
 from __future__ import annotations
 
@@ -19,6 +20,10 @@ UNCERTAIN_THRESHOLD = 0.55
 MODEL_DIR = Path(os.environ.get("CASSAVAWATCH_MODEL_DIR", Path(__file__).resolve().parent.parent / "models"))
 
 _backend = None  # (kind, callable)
+
+
+class ModelUnavailable(RuntimeError):
+    pass
 
 
 def preprocess(image_bytes: bytes) -> np.ndarray:
@@ -45,7 +50,10 @@ def _load():
     if _backend is not None:
         return _backend
     tfl, ker = MODEL_DIR / "cassava.tflite", MODEL_DIR / "cassava.keras"
-    if os.environ.get("CASSAVAWATCH_STUB") != "1" and (tfl.exists() or ker.exists()):
+    if os.environ.get("CASSAVAWATCH_STUB") == "1":
+        _backend = ("stub", _stub_predict)
+        return _backend
+    if tfl.exists() or ker.exists():
         try:
             import tensorflow as tf
             if tfl.exists():
@@ -63,8 +71,10 @@ def _load():
                 _backend = ("keras", lambda x: model(x, training=False).numpy()[0])
             return _backend
         except Exception as e:  # pragma: no cover
-            print(f"[inference] model load failed ({e}); using stub")
-    _backend = ("stub", _stub_predict)
+            print(f"[inference] model load failed: {e}")
+    else:
+        print(f"[inference] no model in {MODEL_DIR}; run `make train`. /api/diagnose will return 503.")
+    _backend = ("none", None)
     return _backend
 
 
@@ -74,6 +84,8 @@ def backend_name() -> str:
 
 def predict(image_bytes: bytes) -> dict:
     _, f = _load()
+    if f is None:
+        raise ModelUnavailable("model not loaded")
     probs = np.asarray(f(preprocess(image_bytes)), dtype=np.float64)
     probs = probs / probs.sum()
     return {"label": CLASSES[int(probs.argmax())], "probs": probs.tolist()}

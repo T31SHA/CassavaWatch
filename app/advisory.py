@@ -65,7 +65,85 @@ UNCERTAIN = {
 }
 
 
+# Short farmer-facing card content: one-liner + at most 4 bullets per language.
+CARD = {
+    "cbb": {
+        "summary": {"en": "A bacterial disease that spreads on tools, rain splash and cuttings.",
+                    "sw": "Ugonjwa wa bakteria unaoenea kupitia zana, matone ya mvua na vipandikizi."},
+        "bullets": {"en": ["Remove and burn infected leaves and stems.",
+                           "Clean knives and hoes with bleach between plants.",
+                           "Plant only clean, certified cuttings.",
+                           "Rotate with a non-cassava crop next season."],
+                    "sw": ["Ondoa na uchome majani na mashina yaliyoathirika.",
+                           "Safisha visu na majembe kwa bleach kati ya mimea.",
+                           "Panda vipandikizi safi vilivyothibitishwa tu.",
+                           "Panda zao lisilo muhogo msimu ujao."]},
+    },
+    "cbsd": {
+        "summary": {"en": "A virus that rots the roots. It spreads mainly through infected cuttings.",
+                    "sw": "Virusi vinavyooza mizizi. Huenea hasa kupitia vipandikizi vilivyoathirika."},
+        "bullets": {"en": ["Uproot and destroy infected plants now.",
+                           "Never take cuttings from this plant or field.",
+                           "Replant only clean cuttings from a certified source.",
+                           "Check roots and harvest early if they are affected."],
+                    "sw": ["Ng'oa na uharibu mimea iliyoathirika sasa.",
+                           "Usichukue vipandikizi kutoka mmea au shamba hili.",
+                           "Panda tena vipandikizi safi kutoka chanzo kilichothibitishwa tu.",
+                           "Kagua mizizi na uvune mapema ikiwa imeathirika."]},
+    },
+    "cgm": {
+        "summary": {"en": "Tiny mites that feed on young leaves, worst in the dry season.",
+                    "sw": "Utitiri wadogo wanaokula majani machanga, hasa wakati wa kiangazi."},
+        "bullets": {"en": ["Plant early so crops are strong before the dry season.",
+                           "Avoid broad insecticides — they kill the mites' natural enemies.",
+                           "Remove heavily infested shoot tips.",
+                           "Use tolerant, hairy-leaf varieties."],
+                    "sw": ["Panda mapema ili mimea iwe imara kabla ya kiangazi.",
+                           "Epuka viuatilifu vya jumla — vinaua maadui wa asili wa utitiri.",
+                           "Ondoa ncha za matawi zilizoathirika sana.",
+                           "Tumia aina zinazostahimili zenye majani ya manyoya."]},
+    },
+    "cmd": {
+        "summary": {"en": "A virus that twists and yellows leaves. It spreads mainly through infected cuttings.",
+                    "sw": "Virusi vinavyokunja na kufanya majani kuwa manjano. Huenea hasa kupitia vipandikizi."},
+        "bullets": {"en": ["Uproot and destroy infected plants early.",
+                           "Never replant cuttings from infected plants.",
+                           "Use clean cuttings of a CMD-resistant variety.",
+                           "Keep the field weeded."],
+                    "sw": ["Ng'oa na uharibu mimea iliyoathirika mapema.",
+                           "Usipande tena vipandikizi kutoka mimea iliyoathirika.",
+                           "Tumia vipandikizi safi vya aina inayostahimili CMD.",
+                           "Palilia shamba."]},
+    },
+    "healthy": {
+        "summary": {"en": "No disease was found on these leaves.",
+                    "sw": "Hakuna ugonjwa uliopatikana kwenye majani haya."},
+        "bullets": {"en": ["Check your plants again in 2 weeks.",
+                           "Keep the field weeded.",
+                           "Keep using clean cuttings."],
+                    "sw": ["Kagua mimea yako tena baada ya wiki 2.",
+                           "Palilia shamba.",
+                           "Endelea kutumia vipandikizi safi."]},
+    },
+    "uncertain": {
+        "summary": {"en": "The photos were not clear enough for a confident answer.",
+                    "sw": "Picha hazikuwa wazi vya kutosha kupata jibu la uhakika."},
+        "bullets": {"en": ["Show this plant to an extension officer.",
+                           "Retake 3–6 photos in good daylight, one leaf per photo."],
+                    "sw": ["Mwonyeshe afisa ugani mmea huu.",
+                           "Piga tena picha 3–6 kwenye mwanga mzuri, jani moja kwa kila picha."]},
+    },
+}
+
+
 def get_advice(label: str, lang: str = "en") -> dict:
     lang = lang if lang in ("en", "sw") else "en"
     entry = ADVICE.get(label, UNCERTAIN)
-    return {"name": entry["name"][lang], "text": entry[lang], "lang": lang}
+    card = CARD.get(label, CARD["uncertain"])
+    return {"name": entry["name"][lang], "text": entry[lang], "lang": lang,
+            "summary": card["summary"][lang], "bullets": card["bullets"][lang]}
+
+
+def get_advice_all(label: str) -> dict:
+    """Advice in every language, so the UI can switch language without a new request."""
+    return {lang: get_advice(label, lang) for lang in ("en", "sw")}

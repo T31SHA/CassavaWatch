@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from . import inference
-from .advisory import get_advice
+from .advisory import get_advice, get_advice_all
 from .models import Alert, Report, get_session, init_db, utcnow
 from .surveillance import cell_bounds, run_surveillance
 
@@ -45,6 +45,8 @@ class Advice(BaseModel):
     name: str
     text: str
     lang: str
+    summary: str
+    bullets: List[str]
 
 
 class DiagnoseOut(BaseModel):
@@ -57,6 +59,8 @@ class DiagnoseOut(BaseModel):
     n_leaves: int
     leaves: List[LeafResult]
     advice: Advice
+    advice_all: Dict[str, Advice]
+    single_leaf_unreliable: bool
     backend: str
     new_alerts: int
 
@@ -119,13 +123,19 @@ async def diagnose(
     s=Depends(get_session),
 ):
     if not images or len(images) > MAX_IMAGES:
-        raise HTTPException(400, f"send 1-{MAX_IMAGES} images")
+        raise HTTPException(400, f"Please send between 1 and {MAX_IMAGES} leaf photos.")
+    if inference.backend_name() == "none":
+        raise HTTPException(503, "Diagnosis is temporarily unavailable: the disease model is not installed "
+                                 "on the server. Your report was not saved; please try again later.")
     leaves = []
     for up in images:
         try:
             leaves.append(inference.predict(await up.read()))
+        except inference.ModelUnavailable:
+            raise HTTPException(503, "Diagnosis is temporarily unavailable: the disease model is not loaded.")
         except Exception:
-            raise HTTPException(400, f"could not read image {up.filename!r}")
+            raise HTTPException(400, f"'{up.filename}' is not a readable image. "
+                                     "Please upload a JPG or PNG photo of a cassava leaf.")
     plant = inference.aggregate_plant([l["probs"] for l in leaves])
     rep = Report(ts=utcnow(), lat=lat, lon=lon, crop="cassava", disease=plant["label"],
                  confidence=plant["confidence"], n_leaves=plant["n_leaves"], device_id=device_id)
@@ -134,6 +144,8 @@ async def diagnose(
     before = s.query(Alert).filter(Alert.status == "active").count()
     after = len(run_surveillance(s))
     return DiagnoseOut(report_id=rep.id, leaves=leaves, advice=get_advice(plant["label"], lang),
+                       advice_all=get_advice_all(plant["label"]),
+                       single_leaf_unreliable=plant["n_leaves"] == 1,
                        backend=inference.backend_name(), new_alerts=max(0, after - before),
                        **{k: plant[k] for k in ("label", "top_class", "confidence", "uncertain", "probs", "n_leaves")})
 
