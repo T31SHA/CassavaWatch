@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CassavaWatch — Officer dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dash">
+  <header>
+    <h1>🌿 CassavaWatch — Surveillance</h1>
+    <div><button id="run">Run surveillance</button> <a href="/">Farmer app</a></div>
+  </header>
+  <div class="strip">
+    <div><b id="s-reports">–</b><span>reports, last 7 days</span></div>
+    <div><b id="s-alerts">–</b><span>active alerts</span></div>
+    <div><b id="s-top">–</b><span>top disease (7d)</span></div>
+  </div>
+  <div class="dash-body">
+    <div id="map"></div>
+    <div class="side">
+      <h2>Active alerts</h2>
+      <table id="alerts">
+        <thead><tr><th>Cell</th><th>Disease</th><th>Obs</th><th>Exp</th><th>Ratio</th><th>p</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="note">Alert = last-7-day positives in a 0.1° cell significantly exceed that cell's own
+        60-day baseline rate × its current report volume (Poisson p&lt;0.01, ratio ≥2, ≥5 cases,
+        confidence ≥0.55). Report volume alone never triggers an alert.</p>
+      <h3>Legend</h3>
+      <div id="legend"></div>
+    </div>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  const COLORS = {cmd:"#d62728", cbsd:"#8c564b", cgm:"#ff7f0e", cbb:"#9467bd", healthy:"#2ca02c", uncertain:"#999"};
+  const map = L.map("map").setView([-1.0, 33.5], 7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom: 18, attribution: "© OpenStreetMap"}).addTo(map);
+  const reportLayer = L.layerGroup().addTo(map), alertLayer = L.layerGroup().addTo(map);
+  document.getElementById("legend").innerHTML = Object.entries(COLORS)
+    .map(([k, c]) => `<span class="dot" style="background:${c}"></span>${k} `).join(" ");
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  async function load() {
+    const [reports, alerts, summary] = await Promise.all(
+      ["/api/reports?days=60", "/api/alerts", "/api/summary"].map(u => fetch(u).then(r => r.json())));
+    reportLayer.clearLayers(); alertLayer.clearLayers();
+    const pts = [];
+    for (const r of reports) {
+      pts.push([r.lat, r.lon]);
+      L.circleMarker([r.lat, r.lon], {radius: 4, weight: 0, fillOpacity: 0.75,
+        fillColor: COLORS[r.disease] || "#999"})
+        .bindPopup(`${esc(r.disease)} (${(r.confidence*100).toFixed(0)}%)<br>${esc(r.ts.slice(0,16))}`)
+        .addTo(reportLayer);
+    }
+    for (const a of alerts) {
+      L.rectangle(a.bounds, {color: "red", weight: 2, fillOpacity: 0.15})
+        .bindPopup(`<b>ALERT: ${esc(a.disease.toUpperCase())}</b><br>cell ${esc(a.region_cell)}<br>
+          observed ${a.observed} vs expected ${a.expected.toFixed(2)}<br>
+          ratio ${a.ratio.toFixed(1)}×, p = ${a.p_value.toExponential(1)}`).addTo(alertLayer);
+    }
+    const tb = document.querySelector("#alerts tbody");
+    tb.innerHTML = alerts.length ? "" : `<tr><td colspan="7">No active alerts</td></tr>`;
+    for (const a of alerts) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><a href="#">${esc(a.region_cell)}</a></td><td>${esc(a.disease)}</td>
+        <td>${a.observed}</td><td>${a.expected.toFixed(1)}</td><td>${a.ratio.toFixed(1)}×</td>
+        <td>${a.p_value.toExponential(1)}</td><td><button>Mark reviewed</button></td>`;
+      tr.querySelector("a").onclick = e => { e.preventDefault(); map.fitBounds(a.bounds, {maxZoom: 11}); };
+      tr.querySelector("button").onclick = async () => {
+        await fetch(`/api/alerts/${a.id}/review`, {method: "POST"}); load(); };
+      tb.appendChild(tr);
+    }
+    document.getElementById("s-reports").textContent = summary.reports_7d;
+    document.getElementById("s-alerts").textContent = summary.active_alerts;
+    document.getElementById("s-top").textContent = summary.top_disease
+      ? `${summary.top_disease.toUpperCase()} (${summary.top_disease_count})` : "–";
+    if (pts.length && !load.done) { map.fitBounds(pts, {padding: [20, 20]}); load.done = true; }
+  }
+  document.getElementById("run").onclick = async () => {
+    await fetch("/api/surveillance/run", {method: "POST"}); load(); };
+  load();
+  </script>
+</body>
+</html>

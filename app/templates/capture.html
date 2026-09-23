@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CassavaWatch</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="capture">
+  <header>
+    <h1>🌿 CassavaWatch</h1>
+    <div class="lang">
+      <button data-lang="en">EN</button><button data-lang="sw">SW</button>
+    </div>
+  </header>
+  <main>
+    <p class="instr" data-i18n="instr"></p>
+    <label class="bigbtn">
+      <span data-i18n="take"></span>
+      <input id="photo" type="file" accept="image/*" capture="environment" multiple hidden>
+    </label>
+    <div class="counter"><span id="count">0</span> / 6 <span data-i18n="leaves"></span></div>
+    <div id="thumbs"></div>
+
+    <div id="locbox">
+      <div id="locstatus" data-i18n="locating"></div>
+      <select id="district" hidden>
+        <option value="" data-i18n="pick"></option>
+        <option value="0.460,34.111">Busia (KE)</option>
+        <option value="0.565,34.560">Bungoma (KE)</option>
+        <option value="0.520,34.300">Butula (KE)</option>
+        <option value="-2.516,32.900">Mwanza (TZ)</option>
+        <option value="-2.700,33.000">Misungwi (TZ)</option>
+        <option value="-3.370,32.840">Kwimba (TZ)</option>
+        <option value="0.347,32.583">Kampala (UG)</option>
+      </select>
+    </div>
+
+    <button id="submit" class="primary" disabled data-i18n="submit"></button>
+    <button id="reset" class="link" data-i18n="reset"></button>
+    <div id="queue" class="note" hidden></div>
+
+    <section id="result" hidden>
+      <h2 id="r-name"></h2>
+      <div id="r-conf"></div>
+      <div id="r-uncertain" class="warn" hidden data-i18n="uncertain"></div>
+      <p id="r-advice"></p>
+      <details><summary data-i18n="details"></summary><table id="r-probs"></table></details>
+      <div id="r-backend" class="note"></div>
+    </section>
+    <p class="foot"><a href="/dashboard" data-i18n="officer"></a></p>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
